@@ -1,12 +1,15 @@
+using System;
 using System.Reflection;
 using MoonShared.APIs;
 using MoonShared.Attributes;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Delegates;
 using StardewValley.Triggers;
 using WizardrySkill.API;
 using WizardrySkill.Core.Framework;
+using WizardrySkill.Core.Framework.Game.Interface; // Added for MagicMenu
 
 namespace WizardrySkill.Core
 {
@@ -26,7 +29,6 @@ namespace WizardrySkill.Core
         internal ITranslationHelper I18N => this.Helper.Translation;
         public static IManaBarApi Mana;
 
-
         public override void Entry(IModHelper helper)
         {
             I18n.Init(helper.Translation);
@@ -34,22 +36,55 @@ namespace WizardrySkill.Core
             Assembly assembly = this.GetType().Assembly;
             LegacyDataMigrator = new(this.Monitor);
 
+            // 1. Register Console Command
+            helper.ConsoleCommands.Add("open_altar", "Opens the Wizardry menu remotely.", (s, a) => this.OpenAltarMenu());
+
+            // 2. Register Button Pressed Event for F13
+            helper.Events.Input.ButtonPressed += this.OnButtonPressed;
+
             GameLocation.RegisterTileAction("MagicAltar", Events.HandleMagicAltar);
             GameLocation.RegisterTileAction("MagicRadio", Events.HandleMagicRadio);
             ModEntry.Instance.Helper.Events.GameLoop.GameLaunched += Events.GameLaunched;
 
             MoonShared.Attributes.Parser.InitEvents(helper);
             MoonShared.Attributes.Parser.ParseAll(this);
+            
             TriggerActionManager.RegisterAction(
-            $"moonslime.WizardrySkill.learnedmagic",
-            LearnedMagic);
+                $"moonslime.WizardrySkill.learnedmagic",
+                LearnedMagic);
 
             TriggerActionManager.RegisterAction(
-            $"moonslime.WizardrySkill.learnedspell",
-            LearnedSPell);
+                $"moonslime.WizardrySkill.learnedspell",
+                LearnedSPell);
         }
 
-        /// <summary>Get an API that other mods can access. This is always called after <see cref="M:StardewModdingAPI.Mod.Entry(StardewModdingAPI.IModHelper)" />.</summary>
+        private void OnButtonPressed(object sender, ButtonPressedEventArgs e)
+        {
+            // Only trigger if world is loaded and no other menu is open
+            if (!Context.IsWorldReady || Game1.activeClickableMenu != null || Game1.eventUp)
+                return;
+
+            // Check for F13
+            if (e.Button == SButton.F13)
+            {
+                this.OpenAltarMenu();
+            }
+        }
+
+        private void OpenAltarMenu()
+        {
+            try
+            {
+                // Opens the MagicMenu from your Interface folder
+                Game1.activeClickableMenu = new MagicMenu();
+                this.Monitor.Log("Opening Wizardry Altar menu...", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.Log($"Error opening menu: {ex.Message}", LogLevel.Error);
+            }
+        }
+
         public override object GetApi()
         {
             try
@@ -81,6 +116,5 @@ namespace WizardrySkill.Core
             Utilities.LearnedSpell(points);
             return true;
         }
-
     }
 }
